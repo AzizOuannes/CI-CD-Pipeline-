@@ -13,11 +13,14 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
       IMAGE_TAG: staging-${{ github.sha }}
+      CLUSTER_NAME: devops-assessment
+      K8S_NAMESPACE: staging
 
     steps:
     # -------------------------
@@ -27,7 +30,7 @@ jobs:
       uses: actions/checkout@v4
 
     # -------------------------
-    # Linting
+    # Linting (light quality gate)
     # -------------------------
     - name: Run linting
       run: |
@@ -36,16 +39,7 @@ jobs:
         flake8 app/
 
     # -------------------------
-    # Security scan
-    # -------------------------
-    - name: Security scan with Trivy
-      uses: aquasecurity/trivy-action@master
-      with:
-       scan-type: image
-       image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-
-    # -------------------------
-    # Configure AWS for ECR & deploy
+    # Configure AWS (OIDC)
     # -------------------------
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
@@ -53,27 +47,62 @@ jobs:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
         aws-region: ${{ secrets.AWS_REGION }}
 
+    # -------------------------
+    # Login to ECR
+    # -------------------------
     - name: Log in to Amazon ECR
       uses: aws-actions/amazon-ecr-login@v2
 
+    # -------------------------
+    # Build Docker image
+    # -------------------------
     - name: Build Docker image
       run: |
-        docker build -t $ECR_REPOSITORY:$IMAGE_TAG -f app/Dockerfile app
-
-    - name: Push Docker image to ECR
-      run: |
-        docker tag $ECR_REPOSITORY:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+        docker build \
+          -t $ECR_REPOSITORY:$IMAGE_TAG \
+          -f app/Dockerfile app
 
     # -------------------------
-    # Deploy to EKS (commented for testing)
+    # Push image to ECR
+    # -------------------------
+    - name: Push Docker image to ECR
+      run: |
+        docker tag $ECR_REPOSITORY:$IMAGE_TAG \
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+        docker push \
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+    # -------------------------
+    # Security scan (Trivy)
+    # -------------------------
+    - name: Security scan with Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+        format: table
+
+
+    # -------------------------
+    # Update kubeconfig
     # -------------------------
     - name: Update kubeconfig for EKS
       run: |
-        aws eks update-kubeconfig --region $AWS_REGION --name staging-cluster
+        aws eks update-kubeconfig \
+          --region $AWS_REGION \
+          --name $CLUSTER_NAME
 
+    # -------------------------
+    # Deploy to EKS
+    # -------------------------
     - name: Deploy to EKS
       run: |
-        kubectl set image deployment/flask-app flask-app=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n staging || \
-        kubectl create deployment flask-app --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n staging
-        kubectl rollout status deployment/flask-app -n staging
+        kubectl create namespace $K8S_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+        kubectl set image deployment/flask-app flask-app=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
+          -n $K8S_NAMESPACE || \
+        kubectl create deployment flask-app \
+          --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
+          -n $K8S_NAMESPACE
+
+        kubectl rollout status deployment/flask-app -n $K8S_NAMESPACE
