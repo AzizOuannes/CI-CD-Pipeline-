@@ -7,7 +7,9 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 app = Flask(__name__)
+
 
 @app.route('/health')
 def health():
@@ -19,6 +21,7 @@ def health():
         'version': '1.0.0'
     })
 
+
 @app.route('/')
 def home():
     """Main application endpoint"""
@@ -28,6 +31,7 @@ def home():
         'environment': os.getenv('FLASK_ENV', 'development'),
         'timestamp': datetime.utcnow().isoformat()
     })
+
 
 @app.route('/api/info')
 def info():
@@ -40,6 +44,7 @@ def info():
         'kubernetes': True,
         'description': 'CI/CD pipeline demonstration for AWS EKS'
     })
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
