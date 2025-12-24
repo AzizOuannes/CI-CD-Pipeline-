@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION: eu-west-3
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
       IMAGE_TAG: staging-${{ github.sha }}
@@ -22,34 +22,34 @@ jobs:
 
     steps:
     # -------------------------
-    # Checkout code
+    # Checkout
     # -------------------------
     - name: Checkout code
       uses: actions/checkout@v4
 
     # -------------------------
-    # Configure AWS credentials
+    # Configure AWS (OIDC)
     # -------------------------
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
-        aws-region: ${{ secrets.AWS_REGION }}
+        aws-region: ${{ env.AWS_REGION }}
 
     # -------------------------
-    # Login to Amazon ECR
+    # Login to ECR
     # -------------------------
     - name: Login to Amazon ECR
       uses: aws-actions/amazon-ecr-login@v2
 
     # -------------------------
-    # Build & push Docker image
+    # Build & Push Image
     # -------------------------
     - name: Build Docker image
       run: |
         docker build -t $ECR_REPOSITORY:$IMAGE_TAG -f app/Dockerfile app
 
-    - name: Push Docker image to ECR
+    - name: Push Docker image
       run: |
         docker tag $ECR_REPOSITORY:$IMAGE_TAG \
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
@@ -58,22 +58,25 @@ jobs:
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
 
     # -------------------------
-    # Configure kubectl for EKS  ✅ FIX
+    # Configure kubectl for EKS
     # -------------------------
-    - name: Update kubeconfig for EKS
+    - name: Update kubeconfig
       run: |
         aws eks update-kubeconfig \
           --region $AWS_REGION \
           --name $CLUSTER_NAME
 
     # -------------------------
-    # Deploy to Kubernetes
+    # Create namespace (safe)
     # -------------------------
-    - name: Create namespace if not exists
+    - name: Create namespace
       run: |
         kubectl create namespace $K8S_NAMESPACE \
           --dry-run=client -o yaml | kubectl apply -f -
 
+    # -------------------------
+    # Deploy to EKS
+    # -------------------------
     - name: Deploy application
       run: |
         kubectl create deployment flask-app \
@@ -82,9 +85,12 @@ jobs:
           --dry-run=client -o yaml | kubectl apply -f -
 
         kubectl set image deployment/flask-app flask-app=\
-        $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
-        -n $K8S_NAMESPACE
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
+          -n $K8S_NAMESPACE
 
-    - name: Wait for rollout
+    # -------------------------
+    # Wait for rollout
+    # -------------------------
+    - name: Verify rollout
       run: |
         kubectl rollout status deployment/flask-app -n $K8S_NAMESPACE
