@@ -1,1 +1,8 @@
 /IAM/*.json
+
+# Terraform sensitive files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
