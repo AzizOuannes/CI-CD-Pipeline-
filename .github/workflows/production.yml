@@ -49,12 +49,27 @@ jobs:
     # -------------------------
     # Deploy to EKS
     # -------------------------
-    #- name: Update kubeconfig for EKS
-      #run: |
-        #aws eks update-kubeconfig --region $AWS_REGION --name production-cluster
+    - name: Update kubeconfig for EKS
+      run: |
+        aws eks update-kubeconfig --region $AWS_REGION --name devops-assessment
 
-    #- name: Deploy to EKS
-      #run: |
-        #kubectl set image deployment/flask-app flask-app=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n production || \
-        #kubectl create deployment flask-app --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n production
-        #kubectl rollout status deployment/flask-app -n production
+    - name: Verify cluster access
+      run: |
+        kubectl auth can-i get nodes || echo "Limited cluster access - proceeding with deployment"
+
+    - name: Create production namespace if not exists
+      run: |
+        kubectl create namespace production \
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
+
+    - name: Deploy application
+      run: |
+        kubectl -n production create deployment flask-app \
+          --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
+
+        kubectl -n production expose deployment flask-app \
+          --type=LoadBalancer --port=80 --target-port=5000 \
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
+
+        kubectl rollout status deployment/flask-app -n production --timeout=5m
