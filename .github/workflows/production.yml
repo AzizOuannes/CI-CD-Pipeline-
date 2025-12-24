@@ -49,12 +49,12 @@ jobs:
     # -------------------------
     # Deploy to EKS
     # -------------------------
-    - name: Update kubeconfig for EKS
-      run: |
-        aws eks update-kubeconfig --region $AWS_REGION --name production-cluster
+    #- name: Update kubeconfig for EKS
+      #run: |
+        #aws eks update-kubeconfig --region $AWS_REGION --name production-cluster
 
-    - name: Deploy to EKS
-      run: |
-        kubectl set image deployment/flask-app flask-app=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n production || \
-        kubectl create deployment flask-app --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n production
-        kubectl rollout status deployment/flask-app -n production
+    #- name: Deploy to EKS
+      #run: |
+        #kubectl set image deployment/flask-app flask-app=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n production || \
+        #kubectl create deployment flask-app --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG -n production
+        #kubectl rollout status deployment/flask-app -n production
