@@ -39,11 +39,10 @@ jobs:
     # Security scan
     # -------------------------
     - name: Security scan with Trivy
-      uses: aquasecurity/trivy-action@v0.34.0
+      uses: aquasecurity/trivy-action@master
       with:
         scan-type: image
         image-ref: $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-
     # -------------------------
     # Configure AWS for ECR & deploy
     # -------------------------
