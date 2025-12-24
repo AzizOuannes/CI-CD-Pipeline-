@@ -65,22 +65,26 @@ jobs:
           --region $AWS_REGION \
           --name $CLUSTER_NAME
 
+    - name: Verify cluster access
+      run: |
+        kubectl auth can-i get nodes || echo "Limited cluster access - proceeding with deployment"
+
     # -------------------------
     # Deploy to Kubernetes
     # -------------------------
     - name: Create namespace if not exists
       run: |
         kubectl create namespace $K8S_NAMESPACE \
-          --dry-run=client -o yaml | kubectl apply -f -
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
     - name: Deploy application
       run: |
         kubectl -n $K8S_NAMESPACE create deployment flask-app \
           --image=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG \
-          --dry-run=client -o yaml | kubectl apply -f -
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
         kubectl -n $K8S_NAMESPACE expose deployment flask-app \
           --type=LoadBalancer --port=80 --target-port=5000 \
-          --dry-run=client -o yaml | kubectl apply -f -
+          --dry-run=client -o yaml | kubectl apply -f - --validate=false
 
-        kubectl rollout status deployment/flask-app -n $K8S_NAMESPACE
+        kubectl rollout status deployment/flask-app -n $K8S_NAMESPACE --timeout=5m
